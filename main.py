@@ -1,6 +1,8 @@
 #Virtual Guardian Backend 
 
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import joblib
 import numpy as np
@@ -11,6 +13,13 @@ from sklearn.ensemble import IsolationForest
 import os
 
 app = FastAPI(title="Vital Guardian Advanced Monitoring API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # allow all (for now)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 #Loading Model 
 
@@ -21,8 +30,8 @@ anomaly_model = IsolationForest(contamination=0.02)
 
 #Configuration 
 
-RED_THRESHOLD = 0.50
-ORANGE_THRESHOLD = 0.50
+RED_THRESHOLD = 0.6
+ORANGE_THRESHOLD = 0.3
 SUSTAIN_TIME = 20
 
 SUPABASE_URL = "YOUR_SUPABASE_URL"
@@ -145,15 +154,15 @@ def predict(vitals: VitalInput):
     final_stage = apply_sustained_logic(vitals.user_id, raw_stage)
 
     #Log to database
-    log_to_supabase({
-        "user_id": vitals.user_id,
-        "heart_rate": vitals.heart_rate,
-        "resp_rate": vitals.resp_rate,
-        "spo2": vitals.spo2,
-        "movement_index": vitals.movement_index,
-        "stage": final_stage,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    #log_to_supabase({
+    #    "user_id": vitals.user_id,
+    #    "heart_rate": vitals.heart_rate,
+    #    "resp_rate": vitals.resp_rate,
+    #    "spo2": vitals.spo2,
+    #    "movement_index": vitals.movement_index,
+    #    "stage": final_stage,
+    #    "timestamp": datetime.utcnow().isoformat()
+    #})
 
     #Trigger SMS if RED
     if final_stage == 2:
