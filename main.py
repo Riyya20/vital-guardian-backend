@@ -12,6 +12,7 @@ import requests
 from sklearn.ensemble import IsolationForest
 import os
 
+
 app = FastAPI(title="Vital Guardian Advanced Monitoring API")
 app.add_middleware(
     CORSMiddleware,
@@ -25,8 +26,18 @@ app.add_middleware(
 
 model = joblib.load("overdose_monitor_model.pkl")
 
+ENABLE_DB = False
+ENABLE_SMS = False
+ENABLE_ANOMALY = False
 #Isolation Forest for anomaly detection
 anomaly_model = IsolationForest(contamination=0.02)
+if ENABLE_ANOMALY:
+    baseline_data = np.array([
+        [70, 16, 98, 0.8, 16, 97, 70],
+        [75, 18, 97, 0.7, 17, 96, 72],
+        [65, 14, 99, 0.9, 15, 98, 68]
+    ])
+    anomaly_model.fit(baseline_data)
 
 #Configuration 
 
@@ -146,32 +157,33 @@ def predict(vitals: VitalInput):
     else:
         raw_stage = 0
 
-    #Anomaly detection
-    anomaly_score = anomaly_model.fit_predict(features)[0]
-    if anomaly_score == -1:
-        raw_stage = max(raw_stage, 1)
+    if ENABLE_ANOMALY:
+        anomaly_score = anomaly_model.predict(features)[0]
+        if anomaly_score == -1:
+            raw_stage = max(raw_stage, 1)
 
     final_stage = apply_sustained_logic(vitals.user_id, raw_stage)
 
     #Log to database
-    #log_to_supabase({
-    #    "user_id": vitals.user_id,
-    #    "heart_rate": vitals.heart_rate,
-    #    "resp_rate": vitals.resp_rate,
-    #    "spo2": vitals.spo2,
-    #    "movement_index": vitals.movement_index,
-    #    "stage": final_stage,
-    #    "timestamp": datetime.utcnow().isoformat()
-    #})
+    if ENABLE_DB:
+        log_to_supabase({
+             "user_id": vitals.user_id,
+             "heart_rate": vitals.heart_rate,
+             "resp_rate": vitals.resp_rate,
+             "spo2": vitals.spo2,
+             "movement_index": vitals.movement_index,
+            "stage": final_stage,
+             "timestamp": datetime.utcnow().isoformat()
+        })
 
     #Trigger SMS if RED
-    if final_stage == 2:
-        phone = get_patient_phone(vitals.user_id)
-        if phone:
-            send_sms_alert(
-                phone,
-                f"🚨 ALERT: Possible overdose detected for {vitals.user_id}. Immediate attention required."
-            )
+    if ENABLE_SMS and final_stage == 2:
+         phone = get_patient_phone(vitals.user_id)
+         if phone:
+             send_sms_alert(
+                 phone,
+                 f"🚨 ALERT: Possible overdose detected for {vitals.user_id}. Immediate attention required."
+             )
 
     return {
         "green_prob": float(probs[0]),
@@ -179,3 +191,7 @@ def predict(vitals: VitalInput):
         "red_prob": float(probs[2]),
         "stage": int(final_stage)
     }
+
+@app.get("/")
+def home():
+    return {"message": "Vital Guardian API is running 🚀"}
